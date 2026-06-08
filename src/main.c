@@ -1,41 +1,88 @@
 #include <stdio.h>
 #include <string.h>
-#include "flash/flash.h"
+#include "kvs/kvs.h"
+#include "logger/logger.h"
 
-int main()
-{
-    if (flash_init("storage/flash.bin") != 0) {
-        printf("Flash init failed\n");
-        return 1;
+static logger_t *logger;
+
+void test_set(kvs_t *kvs, const char *key, const char *value) {
+    if (kvs_set(kvs, key, value) == 0)
+        logger_write(logger, 'I', "SET OK\n");
+    else
+        logger_write(logger, 'E', "SET FAILED\n");
+}
+
+void test_get(kvs_t *kvs, const char *key, const char *expected) {
+    char buf[256];
+    uint16_t size = 0;
+
+    if (kvs_get(kvs, key, buf, &size) != 0) {
+        logger_write(logger, 'E', "GET FAILED\n");
+        return;
     }
 
-    printf("[1] Flash initialized\n");
+    buf[size] = '\0';
 
-    unsigned char write_buf[PAGE_SIZE];
-    memset(write_buf, 'A', PAGE_SIZE);
+    if (expected != NULL && strcmp(buf, expected) != 0)
+        logger_write(logger, 'E', "GET MISMATCH\n");
+    else
+        logger_write(logger, 'I', "GET OK\n");
+}
 
-    flash_write_page("storage/flash.bin", 2, write_buf);
-    printf("[2] Page 2 written\n");
+void test_delete(kvs_t *kvs, const char *key) {
+    if (kvs_delete(kvs, key) == 0)
+        logger_write(logger, 'I', "DELETE OK\n");
+    else
+        logger_write(logger, 'E', "DELETE FAILED\n");
+}
 
-    unsigned char read_buf[PAGE_SIZE];
-    flash_read_page("storage/flash.bin", 2, read_buf);
-
-    printf("[3] Page 2 read: ");
-    for (int i = 0; i < 10; i++) {
-        printf("%c ", read_buf[i]);
+int main() {
+    logger = logger_create("logs/log.txt");
+    if (logger == NULL) {
+        printf("Failed to create logger\n");
+        return -1;
     }
-    printf("...\n");
 
-    flash_erase_block("storage/flash.bin", 0);
-    printf("[4] Block 0 erased\n");
-
-    flash_read_page("storage/flash.bin", 2, read_buf);
-
-    printf("[5] After erase: ");
-    for (int i = 0; i < 10; i++) {
-        printf("%x ", read_buf[i]);
+    kvs_t *kvs = kvs_create("storage/flash.bin");
+    if (kvs == NULL) {
+        logger_write(logger, 'E', "Failed to create KVS\n");
+        logger_destroy(logger);
+        return -1;
     }
-    printf("\n");
 
+    logger_write(logger, 'I', "[1] Basic write and read\n");
+    test_set(kvs, "name", "cyril");
+    test_get(kvs, "name", "cyril");
+
+    logger_write(logger, 'I', "[2] Multiple keys\n");
+    test_set(kvs, "city", "voronezh");
+    test_set(kvs, "lang", "c");
+    test_get(kvs, "city", "voronezh");
+    test_get(kvs, "lang", "c");
+
+    logger_write(logger, 'I', "[3] Rewriting\n");
+    test_set(kvs, "name", "updated");
+    test_get(kvs, "name", "updated");
+
+    logger_write(logger, 'I', "[4] Delete\n");
+    test_delete(kvs, "city");
+    test_get(kvs, "city", NULL); // expected error
+
+    logger_write(logger, 'I', "[5] Read nonexistent key\n");
+    test_get(kvs, "ghost", NULL); // expected error
+
+    logger_write(logger, 'I', "[6] Persistence\n");
+    kvs_destroy(kvs);
+    kvs = kvs_create("storage/flash.bin");
+    if (kvs == NULL) {
+        logger_write(logger, 'E', "Failed to reopen KVS\n");
+        logger_destroy(logger);
+        return -1;
+    }
+    test_get(kvs, "name", "updated");
+    test_get(kvs, "lang", "c");
+
+    kvs_destroy(kvs);
+    logger_destroy(logger);
     return 0;
 }

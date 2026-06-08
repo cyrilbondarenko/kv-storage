@@ -1,18 +1,27 @@
-#include <stdio.h>
 #include "flash.h"
+#include "stdlib.h"
+#include <stdio.h>
 
-int flash_init(const char *filename)
+struct flash
 {
-    FILE *fp = fopen(filename, "rb");
+    FILE *file;
+};
+
+flash_t* flash_create(const char *filename)
+{
+    flash_t *flash = malloc(sizeof(flash_t));
+    if (flash == NULL) return NULL;
+    FILE *fp = fopen(filename, "rb+");
 
     if (fp != NULL) {
-        fclose(fp);
-        return 0;
+        flash->file = fp;
+        return flash;
     }
 
     fp = fopen(filename, "wb");
     if (fp == NULL) {
-        return -1;
+        free(flash);
+        return NULL;
     }
 
     for (size_t i = 0; i < FLASH_SIZE; i++) {
@@ -20,48 +29,44 @@ int flash_init(const char *filename)
     }
 
     fclose(fp);
-    return 0;
+    fp = fopen(filename, "rb+");
+    if (fp == NULL) {
+        free(flash);
+        return NULL;
+    }
+
+    flash->file = fp;
+    return flash;
 }
 
-int flash_read_page(const char *filename, size_t page, unsigned char* buffer)
-{
-    FILE *fp = fopen(filename, "rb");
-    if (!fp) return -1;
-    
+int flash_read_page(flash_t *flash, size_t page, unsigned char* buffer)
+{   
     size_t offset = page * PAGE_SIZE;
-    if (fseek(fp, offset, SEEK_SET) != 0) return -1;
+    if (fseek(flash->file, offset, SEEK_SET) != 0) return -1;
 
-    size_t read = fread(buffer, 1, PAGE_SIZE, fp);
+    size_t read = fread(buffer, 1, PAGE_SIZE, flash->file);
     if (read != PAGE_SIZE) return -1;
 
-    fclose(fp);
     return 0;
 }
 
-int flash_write_page(const char *filename, size_t page, unsigned char *buffer)
+int flash_write_page(flash_t *flash, size_t page, unsigned char *buffer)
 {
-    FILE *fp = fopen(filename, "rb+");
-    if (!fp) return -1;
-    
     size_t offset = page * PAGE_SIZE;
-    if (fseek(fp, offset, SEEK_SET) != 0) return -1;
+    if (fseek(flash->file, offset, SEEK_SET) != 0) return -1;
 
-    size_t written = fwrite(buffer, 1, PAGE_SIZE, fp);
+    size_t written = fwrite(buffer, 1, PAGE_SIZE, flash->file);
     if (written != PAGE_SIZE) {
         return -1;
     }
 
-    fclose(fp);
     return 0;
 }
 
-int flash_erase_block(const char *filename, size_t block)
+int flash_erase_block(flash_t *flash, size_t block)
 {
-    FILE *fp = fopen(filename, "rb+");
-    if (!fp) return -1;
-    
     size_t offset = block * BLOCK_SIZE;
-    if (fseek(fp, offset, SEEK_SET) != 0) return -1;
+    if (fseek(flash->file, offset, SEEK_SET) != 0) return -1;
 
     unsigned char buffer[BLOCK_SIZE];
     for (size_t i = 0; i < BLOCK_SIZE; i++)
@@ -69,11 +74,16 @@ int flash_erase_block(const char *filename, size_t block)
         buffer[i] = 0xFF;
     }
     
-    size_t written = fwrite(buffer, 1, BLOCK_SIZE, fp);
+    size_t written = fwrite(buffer, 1, BLOCK_SIZE, flash->file);
     if (written != BLOCK_SIZE) {
         return -1;
     }
 
-    fclose(fp);
     return 0;
+}
+
+void flash_destroy(flash_t *flash) {
+    if (flash == NULL) return;
+    fclose(flash->file);
+    free(flash);
 }
