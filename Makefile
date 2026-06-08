@@ -6,6 +6,7 @@ SRC = src/main.c src/flash/flash.c src/hal/hal.c src/logger/logger.c src/kvs/kvs
 TARGET = kvs_demo
 
 all:
+	mkdir -p storage logs
 	$(CC) $(CFLAGS) $(INCLUDES) $(SRC) -o $(TARGET)
 
 clean:
