@@ -19,6 +19,8 @@ bool hal_write_ready_check(hal_t *hal);
 int hal_write(hal_t *hal, const uint8_t *key, uint8_t key_size, const uint8_t *value, uint16_t value_size);
 int hal_read(hal_t *hal, const uint8_t *key, uint8_t key_size, uint8_t *value, uint16_t *value_size);
 int hal_delete(hal_t *hal, const uint8_t *key, uint8_t key_size);
+int hal_gc(hal_t *hal);
+void hal_simulate_power_loss(hal_t *hal, size_t power_loss_after);
 void hal_destroy(hal_t *hal);
 
 #endif

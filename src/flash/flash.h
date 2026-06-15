@@ -3,9 +3,9 @@
 
 #include <stddef.h>
 
-#define FLASH_SIZE (1024 * 1024)
-#define PAGE_SIZE 512
-#define BLOCK_SIZE (16 * 1024)
+#define FLASH_SIZE  (1024 * 1024)
+#define PAGE_SIZE   512
+#define BLOCK_SIZE  (16 * 1024)
 #define TOTAL_PAGES ((1024 * 1024) / 512)
 
 typedef struct flash flash_t;
