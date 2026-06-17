@@ -9,13 +9,15 @@ struct logger
     FILE *file;
 };
 
-logger_t* logger_create(const char *filename)
+logger_t *logger_create(const char *filename)
 {
     logger_t *logger = malloc(sizeof(logger_t));
-    if (logger == NULL) return NULL;
-    
+    if (logger == NULL)
+        return NULL;
+
     FILE *fp = fopen(filename, "a");
-    if (fp == NULL) {
+    if (fp == NULL)
+    {
         free(logger);
         return NULL;
     }
@@ -24,8 +26,10 @@ logger_t* logger_create(const char *filename)
     return logger;
 }
 
-bool logger_write(logger_t *logger, const char sign, const char* message) {
-    if (logger == NULL) return false;
+bool logger_write(logger_t *logger, const char sign, const char *message)
+{
+    if (logger == NULL)
+        return false;
 
     time_t t = time(NULL);
     struct tm *tm = localtime(&t);
@@ -50,12 +54,14 @@ bool logger_write(logger_t *logger, const char sign, const char* message) {
 
     int result = fprintf(logger->file, "%s - %s: %s", time_str, type, message);
     fflush(logger->file);
-    
+
     return result >= 0;
 }
 
-void logger_destroy(logger_t *logger) {
-    if (logger == NULL) return;
+void logger_destroy(logger_t *logger)
+{
+    if (logger == NULL)
+        return;
     fclose(logger->file);
     free(logger);
 }

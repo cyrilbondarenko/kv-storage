@@ -19,11 +19,20 @@ struct hal_header
     uint16_t value_size;
 };
 
-uint32_t crc32(const uint8_t *data, size_t length) {
+typedef struct
+{
+    size_t start_page;
+    size_t pages_count;
+} hal_record_ref_t;
+
+static uint32_t crc32(const uint8_t *data, size_t length)
+{
     uint32_t crc = 0xFFFFFFFF;
-    for (size_t i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; i++)
+    {
         crc ^= data[i];
-        for (int j = 0; j < 8; j++) {
+        for (int j = 0; j < 8; j++)
+        {
             if (crc & 1)
                 crc = (crc >> 1) ^ 0xEDB88320;
             else
@@ -33,12 +42,15 @@ uint32_t crc32(const uint8_t *data, size_t length) {
     return crc ^ 0xFFFFFFFF;
 }
 
-hal_t* hal_create(const char *filename) {
+hal_t *hal_create(const char *filename)
+{
     flash_t *flash = flash_create(filename);
-    if (flash == NULL) return NULL;
+    if (flash == NULL)
+        return NULL;
 
     hal_t *hal = malloc(sizeof(hal_t));
-    if (hal == NULL) {
+    if (hal == NULL)
+    {
         flash_destroy(flash);
         return NULL;
     }
@@ -48,13 +60,16 @@ hal_t* hal_create(const char *filename) {
     hal->power_loss_after = 0;
 
     uint8_t buffer[PAGE_SIZE];
-    for (size_t i = 0; i < TOTAL_PAGES; i++) {
-        if (flash_read_page(flash, i, buffer) != 0) break;
+    for (size_t i = 0; i < TOTAL_PAGES; i++)
+    {
+        if (flash_read_page(flash, i, buffer) != 0)
+            break;
 
         hal_header_t header;
         memcpy(&header, buffer, sizeof(hal_header_t));
 
-        if (header.status == HAL_STATUS_EMPTY) {
+        if (header.status == HAL_STATUS_EMPTY)
+        {
             hal->next_page = i;
             break;
         }
@@ -65,25 +80,32 @@ hal_t* hal_create(const char *filename) {
     return hal;
 }
 
-bool hal_ready_check(hal_t *hal) {
+bool hal_ready_check(hal_t *hal)
+{
     (void)hal;
     return true;
 }
 
-bool hal_write_ready_check(hal_t *hal) {
+static bool hal_write_ready_check(hal_t *hal)
+{
     (void)hal;
     return true;
 }
 
-int hal_write(hal_t *hal, const uint8_t *key, uint8_t key_size, const uint8_t *value, uint16_t value_size) {
-    if (!hal_write_ready_check(hal)) return -1;
+int hal_write(hal_t *hal, const uint8_t *key, uint8_t key_size, const uint8_t *value, uint16_t value_size)
+{
+    if (!hal_write_ready_check(hal))
+        return -1;
 
     size_t total = sizeof(hal_header_t) + key_size + value_size + sizeof(uint32_t);
     size_t pages = (total + PAGE_SIZE - 1) / PAGE_SIZE;
 
-    if (hal->next_page + pages > TOTAL_PAGES) {
-        if (hal_gc(hal) != 0) return -1;
-        if (hal->next_page + pages > TOTAL_PAGES) return -1;
+    if (hal->next_page + pages > TOTAL_PAGES)
+    {
+        if (hal_gc(hal) != 0)
+            return -1;
+        if (hal->next_page + pages > TOTAL_PAGES)
+            return -1;
     }
 
     hal_header_t header;
@@ -93,7 +115,8 @@ int hal_write(hal_t *hal, const uint8_t *key, uint8_t key_size, const uint8_t *v
     header.value_size = value_size;
 
     uint8_t *buffer = malloc(pages * PAGE_SIZE);
-    if (buffer == NULL) return -1;
+    if (buffer == NULL)
+        return -1;
 
     memset(buffer, 0xFF, pages * PAGE_SIZE);
     size_t offset = 0;
@@ -113,13 +136,15 @@ int hal_write(hal_t *hal, const uint8_t *key, uint8_t key_size, const uint8_t *v
 
     for (size_t i = 0; i < pages; i++)
     {
-        if (hal->power_loss_after > 0 && i >= hal->power_loss_after) {
+        if (hal->power_loss_after > 0 && i >= hal->power_loss_after)
+        {
             hal->power_loss_after = 0;
             free(buffer);
             return -1;
         }
 
-        if (flash_write_page(hal->flash, hal->next_page + i, buffer + (i * PAGE_SIZE)) != 0) {
+        if (flash_write_page(hal->flash, hal->next_page + i, buffer + (i * PAGE_SIZE)) != 0)
+        {
             free(buffer);
             return -1;
         }
@@ -132,69 +157,60 @@ int hal_write(hal_t *hal, const uint8_t *key, uint8_t key_size, const uint8_t *v
     return 0;
 }
 
-int hal_read(hal_t *hal, const uint8_t *key, uint8_t key_size, uint8_t *value, uint16_t *value_size) {
-    uint8_t *buffer = malloc(PAGE_SIZE);
-    if (buffer == NULL) return -1;
+// int hal_read(hal_t *hal, const uint8_t *key, uint8_t key_size, uint8_t *value, uint16_t *value_size) {
+//     uint8_t buffer[PAGE_SIZE];
 
-    size_t i = 0;
+//     size_t i = 0;
 
-    while (i < TOTAL_PAGES)
-    {
-        flash_read_page(hal->flash, i, buffer);
+//     while (i < TOTAL_PAGES)
+//     {
+//         flash_read_page(hal->flash, i, buffer);
 
-        hal_header_t header;
-        size_t offset = 0;
+//         hal_header_t header;
+//         size_t offset = 0;
 
-        memcpy(&header, buffer, sizeof(hal_header_t));
-        offset += sizeof(hal_header_t);
+//         memcpy(&header, buffer, sizeof(hal_header_t));
+//         offset += sizeof(hal_header_t);
 
-        uint8_t page_key[header.key_size];
-        memcpy(page_key, buffer + offset, header.key_size);
-        offset += header.key_size;
+//         uint8_t page_key[header.key_size];
+//         memcpy(page_key, buffer + offset, header.key_size);
+//         offset += header.key_size;
 
-        if (header.status == HAL_STATUS_EMPTY) {
-            break;
-        }
+//         if (header.status == HAL_STATUS_EMPTY) {
+//             break;
+//         }
 
-        if (header.status == HAL_STATUS_VALID && header.key_size == key_size && memcmp(key, page_key, key_size) == 0) {
-            uint8_t *new_buffer = realloc(buffer, header.pages_count * PAGE_SIZE);
-            if (new_buffer == NULL) {
-                free(buffer);
-                return -1;
-            }
-            buffer = new_buffer;
+//         if (header.status == HAL_STATUS_VALID && header.key_size == key_size && memcmp(key, page_key, key_size) == 0) {
+//             uint8_t *record = malloc(header.pages_count * PAGE_SIZE);
+//             if (record == NULL) return -1;
 
-            size_t j = 1;
-            while (j < header.pages_count)
-            {
-                flash_read_page(hal->flash, i + j, buffer + (PAGE_SIZE * j));
-                j++;
-            }
+//             for (size_t j = 0; j < header.pages_count; j++) {
+//                 flash_read_page(hal->flash, i + j, record + j * PAGE_SIZE);
+//             }
 
-            uint32_t page_crc;
-            memcpy(&page_crc, buffer + offset + header.value_size, sizeof(uint32_t));
-            uint32_t actual_crc = crc32(buffer, offset + header.value_size);
-            if (page_crc != actual_crc) {
-                free(buffer);
-                return -1;
-            };
+//             uint32_t record_crc;
+//             memcpy(&record_crc, record + offset + header.value_size, sizeof(uint32_t));
+//             uint32_t actual_crc = crc32(record, offset + header.value_size);
+//             if (record_crc != actual_crc) {
+//                 return -1;
+//             };
 
-            *value_size = header.value_size;
-            memcpy(value, buffer + offset, header.value_size);
+//             *value_size = header.value_size;
+//             memcpy(value, record + offset, header.value_size);
 
-            free(buffer);
-            
-            return 0;
-        }
+//             free(record);
 
-        i += header.pages_count;
-    }
+//             return 0;
+//         }
 
-    free(buffer);
-    return -1;
-}
+//         i += header.pages_count;
+//     }
 
-int hal_delete(hal_t *hal, const uint8_t *key, uint8_t key_size) {
+//     return -1;
+// }
+
+int hal_delete(hal_t *hal, const uint8_t *key, uint8_t key_size)
+{
     uint8_t buffer[PAGE_SIZE];
     size_t i = 0;
 
@@ -212,14 +228,17 @@ int hal_delete(hal_t *hal, const uint8_t *key, uint8_t key_size) {
         memcpy(page_key, buffer + offset, header.key_size);
         offset += header.key_size;
 
-        if (header.status == HAL_STATUS_EMPTY) {
+        if (header.status == HAL_STATUS_EMPTY)
+        {
             break;
         }
 
-        if (header.status == HAL_STATUS_VALID && memcmp(key, page_key, key_size) == 0) {
+        if (header.status == HAL_STATUS_VALID && memcmp(key, page_key, key_size) == 0)
+        {
             header.status = HAL_STATUS_OBSOLETE;
             memcpy(buffer, &header, sizeof(hal_header_t));
-            if (flash_write_page(hal->flash, i, buffer) != 0) return -1;
+            if (flash_write_page(hal->flash, i, buffer) != 0)
+                return -1;
             return 0;
         }
 
@@ -228,60 +247,142 @@ int hal_delete(hal_t *hal, const uint8_t *key, uint8_t key_size) {
     return -1;
 }
 
-int hal_gc(hal_t *hal) {
+int hal_gc(hal_t *hal)
+{
     size_t valid_pages = 0;
     size_t i = 0;
     uint8_t buffer[PAGE_SIZE];
     hal_header_t header;
+    hal_record_ref_t *refs = malloc(hal->next_page * sizeof(hal_record_ref_t));
+    if (refs == NULL)
+        return -1;
+    size_t ref_count = 0;
 
-    while (i < hal->next_page) {
+    while (i < hal->next_page)
+    {
         flash_read_page(hal->flash, i, buffer);
         memcpy(&header, buffer, sizeof(hal_header_t));
-        if (header.status == HAL_STATUS_EMPTY) break;
-        if (header.status == HAL_STATUS_VALID) {
-            valid_pages += header.pages_count;
+        if (header.status == HAL_STATUS_EMPTY)
+            break;
+        if (header.status == HAL_STATUS_VALID)
+        {
+            uint8_t *record = malloc(header.pages_count * PAGE_SIZE);
+            if (record == NULL)
+            {
+                free(refs);
+                return -1;
+            }
+
+            size_t j = 0;
+            while (j < header.pages_count)
+            {
+                flash_read_page(hal->flash, i + j, record + (PAGE_SIZE * j));
+                j++;
+            }
+
+            uint32_t record_crc;
+            memcpy(&record_crc, record + sizeof(hal_header_t) + header.key_size + header.value_size, sizeof(uint32_t));
+            uint32_t actual_crc = crc32(record, sizeof(hal_header_t) + header.key_size + header.value_size);
+            if (record_crc == actual_crc)
+            {
+                valid_pages += header.pages_count;
+                refs[ref_count].start_page = i;
+                refs[ref_count].pages_count = header.pages_count;
+                ref_count++;
+            }
+            free(record);
         }
         i += header.pages_count;
     }
 
     uint8_t *valid = malloc(valid_pages * PAGE_SIZE);
-    if (valid == NULL) return -1;
+    if (valid == NULL)
+    {
+        free(refs);
+        return -1;
+    };
 
     size_t valid_pages_copied = 0;
     i = 0;
-    while (i < hal->next_page) {
-        flash_read_page(hal->flash, i, buffer);
-        memcpy(&header, buffer, sizeof(hal_header_t));
-        if (header.status == HAL_STATUS_EMPTY) break;
-        if (header.status == HAL_STATUS_VALID) {
-            for (size_t j = 0; j < header.pages_count; j++) {
-                flash_read_page(hal->flash, i + j, valid + valid_pages_copied * PAGE_SIZE);
-                valid_pages_copied++;
-            }
+    while (i < ref_count)
+    {
+        for (size_t j = 0; j < refs[i].pages_count; j++)
+        {
+            flash_read_page(hal->flash, refs[i].start_page + j, valid + valid_pages_copied * PAGE_SIZE);
+            valid_pages_copied++;
         }
-        i += header.pages_count;
+        i++;
     }
 
     size_t total_blocks = FLASH_SIZE / BLOCK_SIZE;
-    for (size_t b = 0; b < total_blocks; b++) {
+    for (size_t b = 0; b < total_blocks; b++)
+    {
         flash_erase_block(hal->flash, b);
     }
 
-    for (size_t p = 0; p < valid_pages; p++) {
+    for (size_t p = 0; p < valid_pages; p++)
+    {
         flash_write_page(hal->flash, p, valid + p * PAGE_SIZE);
     }
 
     hal->next_page = valid_pages;
     free(valid);
+    free(refs);
     return 0;
 }
 
-void hal_simulate_power_loss(hal_t *hal, size_t power_loss_after) {
+void hal_simulate_power_loss(hal_t *hal, size_t power_loss_after)
+{
     hal->power_loss_after = power_loss_after;
 }
 
-void hal_destroy(hal_t *hal) {
-    if (hal != NULL) {
+int hal_iterate(hal_t *hal, void (*callback)(const uint8_t *key, uint8_t key_size, const uint8_t *value, uint16_t value_size, void *ctx), void *ctx)
+{
+    size_t i = 0;
+    uint8_t buffer[PAGE_SIZE];
+    hal_header_t header;
+
+    while (i < hal->next_page)
+    {
+        flash_read_page(hal->flash, i, buffer);
+        memcpy(&header, buffer, sizeof(hal_header_t));
+        if (header.status == HAL_STATUS_EMPTY)
+            break;
+
+        if (header.status == HAL_STATUS_VALID)
+        {
+            uint8_t *record = malloc(header.pages_count * PAGE_SIZE);
+            if (record == NULL)
+                return -1;
+
+            for (size_t j = 0; j < header.pages_count; j++)
+            {
+                flash_read_page(hal->flash, i + j, record + j * PAGE_SIZE);
+            }
+
+            uint32_t record_crc;
+            memcpy(&record_crc, record + sizeof(hal_header_t) + header.key_size + header.value_size, sizeof(uint32_t));
+            uint32_t actual_crc = crc32(record, sizeof(hal_header_t) + header.key_size + header.value_size);
+
+            if (record_crc == actual_crc)
+            {
+                callback(record + sizeof(hal_header_t), header.key_size,
+                         record + sizeof(hal_header_t) + header.key_size, header.value_size, ctx);
+            }
+
+            free(record);
+        }
+
+        i += header.pages_count;
+    }
+
+    return 0;
+}
+
+void hal_destroy(hal_t *hal)
+{
+    if (hal != NULL)
+    {
         flash_destroy(hal->flash);
         free(hal);
     }

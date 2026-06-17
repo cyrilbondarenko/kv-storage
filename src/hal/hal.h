@@ -12,15 +12,14 @@
 typedef struct hal hal_t;
 typedef struct hal_header hal_header_t;
 
-uint32_t crc32(const uint8_t *data, size_t length);
-hal_t* hal_create(const char *filename);
+hal_t *hal_create(const char *filename);
 bool hal_ready_check(hal_t *hal);
-bool hal_write_ready_check(hal_t *hal);
 int hal_write(hal_t *hal, const uint8_t *key, uint8_t key_size, const uint8_t *value, uint16_t value_size);
-int hal_read(hal_t *hal, const uint8_t *key, uint8_t key_size, uint8_t *value, uint16_t *value_size);
+// int hal_read(hal_t *hal, const uint8_t *key, uint8_t key_size, uint8_t *value, uint16_t *value_size);
 int hal_delete(hal_t *hal, const uint8_t *key, uint8_t key_size);
 int hal_gc(hal_t *hal);
 void hal_simulate_power_loss(hal_t *hal, size_t power_loss_after);
+int hal_iterate(hal_t *hal, void (*callback)(const uint8_t *key, uint8_t key_size, const uint8_t *value, uint16_t value_size, void *ctx), void *ctx);
 void hal_destroy(hal_t *hal);
 
 #endif
