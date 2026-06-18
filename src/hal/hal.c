@@ -108,7 +108,7 @@ int hal_write(hal_t *hal, const uint8_t *key, uint8_t key_size, const uint8_t *v
             return -1;
     }
 
-    hal_header_t header;
+    hal_header_t header = {0};
     header.status = HAL_STATUS_VALID;
     header.pages_count = pages;
     header.key_size = key_size;

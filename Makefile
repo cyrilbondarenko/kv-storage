@@ -1,8 +1,8 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -Wpedantic -Werror -Wformat=2 -Wsign-conversion -Wcast-align -std=c11
-INCLUDES = -Isrc/flash -Isrc/hal -Isrc/logger -Isrc/kvs -Isrc/libs
+INCLUDES = -Isrc/flash -Isrc/hal -Isrc/logger -Isrc/kvs -Isrc/hashmap
 
-SRC = src/main.c src/flash/flash.c src/hal/hal.c src/logger/logger.c src/kvs/kvs.c
+SRC = src/main.c src/flash/flash.c src/hal/hal.c src/logger/logger.c src/kvs/kvs.c src/hashmap/hashmap.c
 TARGET = kvs_demo
 
 all:

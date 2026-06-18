@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include "kvs.h"
 #include "hal.h"
-#include "uthash.h"
+#include "hashmap.h"
 
 typedef enum
 {
@@ -16,72 +16,22 @@ typedef enum
 
 typedef struct
 {
-    char key[256];
     uint8_t *value;
     uint16_t value_size;
     cache_state_t state;
-    UT_hash_handle hh;
 } cache_entry_t;
 
-static cache_entry_t *cache_get(cache_entry_t *cache, const char *key)
+struct kvs
 {
-    cache_entry_t *entry;
-    HASH_FIND_STR(cache, key, entry);
-    return entry;
-}
+    hal_t *hal;
+    hashmap_t *cache;
+};
 
-static int cache_set(cache_entry_t **cache, const char *key, const uint8_t *value, uint16_t value_size)
+static void cache_free(void *value)
 {
-    cache_entry_t *entry;
-    HASH_FIND_STR(*cache, key, entry);
-    if (entry == NULL)
-    {
-        entry = malloc(sizeof(cache_entry_t));
-        if (entry == NULL)
-            return -1;
-        strncpy(entry->key, key, sizeof(entry->key) - 1);
-        entry->key[sizeof(entry->key) - 1] = '\0';
-        entry->value = NULL;
-        HASH_ADD_STR(*cache, key, entry);
-    }
-    else
-    {
-        free(entry->value);
-    }
-    entry->value = malloc(value_size);
-    if (entry->value == NULL)
-    {
-        HASH_DEL(*cache, entry);
-        free(entry);
-        return -1;
-    }
-    memcpy(entry->value, value, value_size);
-    entry->value_size = value_size;
-    entry->state = CACHE_CLEAN;
-    return 0;
-}
-
-static void cache_delete(cache_entry_t **cache, const char *key)
-{
-    cache_entry_t *entry;
-    HASH_FIND_STR(*cache, key, entry);
-    if (entry != NULL)
-    {
-        HASH_DEL(*cache, entry);
-        free(entry->value);
-        free(entry);
-    }
-}
-
-static void cache_clear(cache_entry_t **cache)
-{
-    cache_entry_t *entry, *tmp;
-    HASH_ITER(hh, *cache, entry, tmp)
-    {
-        HASH_DEL(*cache, entry);
-        free(entry->value);
-        free(entry);
-    }
+    cache_entry_t *entry = value;
+    free(entry->value);
+    free(entry);
 }
 
 static void cache_load_entry(const uint8_t *key, uint8_t key_size, const uint8_t *value, uint16_t value_size, void *ctx)
@@ -89,14 +39,23 @@ static void cache_load_entry(const uint8_t *key, uint8_t key_size, const uint8_t
     char key_str[256];
     memcpy(key_str, key, key_size);
     key_str[key_size] = '\0';
-    cache_set((cache_entry_t **)ctx, key_str, value, value_size);
-}
 
-struct kvs
-{
-    hal_t *hal;
-    cache_entry_t *cache;
-};
+    cache_entry_t *entry = malloc(sizeof(cache_entry_t));
+    if (entry == NULL)
+        return;
+    entry->value = malloc(value_size);
+    if (entry->value == NULL)
+    {
+        free(entry);
+        return;
+    }
+    memcpy(entry->value, value, value_size);
+    entry->value_size = value_size;
+    entry->state = CACHE_CLEAN;
+
+    if (hashmap_set((hashmap_t *)ctx, key_str, entry) != 0)
+        cache_free(entry);
+}
 
 kvs_t *kvs_create(const char *filename)
 {
@@ -109,11 +68,18 @@ kvs_t *kvs_create(const char *filename)
     {
         hal_destroy(hal);
         return NULL;
-    };
+    }
+
+    kvs->cache = hashmap_create();
+    if (kvs->cache == NULL)
+    {
+        hal_destroy(hal);
+        free(kvs);
+        return NULL;
+    }
 
     kvs->hal = hal;
-    kvs->cache = NULL;
-    hal_iterate(hal, cache_load_entry, &kvs->cache);
+    hal_iterate(hal, cache_load_entry, kvs->cache);
 
     return kvs;
 }
@@ -127,13 +93,37 @@ int kvs_set(kvs_t *kvs, const char *key, const char *value)
     if (key_size == 0 || key_size > UINT8_MAX)
         return -1;
 
-    int result = cache_set(&kvs->cache, key, (const uint8_t *)value, (uint16_t)strlen(value));
-    if (result == 0)
+    uint16_t value_size = (uint16_t)strlen(value);
+    uint8_t *value_copy = malloc(value_size);
+    if (value_copy == NULL)
+        return -1;
+    memcpy(value_copy, value, value_size);
+
+    cache_entry_t *entry = hashmap_get(kvs->cache, key);
+    if (entry == NULL)
     {
-        cache_entry_t *entry = cache_get(kvs->cache, key);
-        entry->state = CACHE_DIRTY;
+        entry = malloc(sizeof(cache_entry_t));
+        if (entry == NULL)
+        {
+            free(value_copy);
+            return -1;
+        }
+        if (hashmap_set(kvs->cache, key, entry) != 0)
+        {
+            free(value_copy);
+            free(entry);
+            return -1;
+        }
     }
-    return result;
+    else
+    {
+        free(entry->value);
+    }
+
+    entry->value = value_copy;
+    entry->value_size = value_size;
+    entry->state = CACHE_DIRTY;
+    return 0;
 }
 
 int kvs_get(kvs_t *kvs, const char *key, char *value, uint16_t *value_size)
@@ -145,7 +135,7 @@ int kvs_get(kvs_t *kvs, const char *key, char *value, uint16_t *value_size)
     if (key_size == 0 || key_size > UINT8_MAX)
         return -1;
 
-    cache_entry_t *entry = cache_get(kvs->cache, key);
+    cache_entry_t *entry = hashmap_get(kvs->cache, key);
     if (entry == NULL || entry->state == CACHE_DELETED)
         return -1;
     *value_size = entry->value_size;
@@ -162,7 +152,7 @@ int kvs_delete(kvs_t *kvs, const char *key)
     if (key_size == 0 || key_size > UINT8_MAX)
         return -1;
 
-    cache_entry_t *entry = cache_get(kvs->cache, key);
+    cache_entry_t *entry = hashmap_get(kvs->cache, key);
     if (entry == NULL || entry->state == CACHE_DELETED)
         return 0;
     entry->state = CACHE_DELETED;
@@ -175,6 +165,31 @@ void kvs_simulate_power_loss(kvs_t *kvs, size_t power_loss_after)
     hal_simulate_power_loss(kvs->hal, power_loss_after);
 }
 
+static bool sync_entry(const char *key, void *value, void *ctx)
+{
+    kvs_t *kvs = ctx;
+    cache_entry_t *entry = value;
+
+    switch (entry->state)
+    {
+    case CACHE_DELETED:
+        hal_delete(kvs->hal, (const uint8_t *)key, (uint8_t)strlen(key));
+        hashmap_delete(kvs->cache, key, cache_free);
+        break;
+
+    case CACHE_DIRTY:
+        hal_delete(kvs->hal, (const uint8_t *)key, (uint8_t)strlen(key));
+        if (hal_write(kvs->hal, (const uint8_t *)key, (uint8_t)strlen(key), entry->value, entry->value_size) != 0)
+            return false;
+        entry->state = CACHE_CLEAN;
+        break;
+
+    default:
+        break;
+    }
+    return true;
+}
+
 int kvs_sync(kvs_t *kvs)
 {
     if (kvs == NULL)
@@ -183,29 +198,7 @@ int kvs_sync(kvs_t *kvs)
     if (!hal_ready_check(kvs->hal))
         return -1;
 
-    cache_entry_t *entry, *tmp;
-    HASH_ITER(hh, kvs->cache, entry, tmp)
-    {
-        switch (entry->state)
-        {
-        case CACHE_DELETED:
-            hal_delete(kvs->hal, (const uint8_t *)entry->key, (uint8_t)strlen(entry->key));
-            cache_delete(&kvs->cache, entry->key);
-            break;
-
-        case CACHE_DIRTY:
-            hal_delete(kvs->hal, (const uint8_t *)entry->key, (uint8_t)strlen(entry->key));
-            if (hal_write(kvs->hal, (const uint8_t *)entry->key, (uint8_t)strlen(entry->key), entry->value, entry->value_size) != 0)
-                return -1;
-            entry->state = CACHE_CLEAN;
-            break;
-
-        default:
-            break;
-        }
-    }
-
-    return 0;
+    return hashmap_for_each(kvs->cache, sync_entry, kvs) ? 0 : -1;
 }
 
 void kvs_destroy(kvs_t *kvs)
@@ -213,7 +206,7 @@ void kvs_destroy(kvs_t *kvs)
     if (kvs != NULL)
     {
         hal_destroy(kvs->hal);
-        cache_clear(&kvs->cache);
+        hashmap_destroy(kvs->cache, cache_free);
         free(kvs);
     }
 }
